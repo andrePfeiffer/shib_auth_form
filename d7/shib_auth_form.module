@@ -1,0 +1,196 @@
+<?php
+
+/**
+ * Implements hook_init().
+ */
+function shib_auth_form_init() {
+  _shib_auth_form_metadata_check();
+}
+
+/**
+ * Implements hook_menu().
+ */
+function shib_auth_form_menu() {
+  $items['admin/config/people/shib_auth/metadata'] = array(
+    'title' => 'Metadata settings',
+    'type' => MENU_LOCAL_TASK,
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('shib_auth_form_admin'),
+    'access arguments' => array('administer shibboleth authentication'),
+    'file' => 'shib_auth_form_admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_form().
+ */
+function shib_auth_form_form($form, &$form_state) {
+  if (_shib_auth_form_metadata_check()) {
+    $institutions = _shib_auth_form_metadata_institutions();
+
+    // Build the IdP list from metadata.
+    $institution_list = array();
+    foreach ($institutions as $institution) {
+      if (isset($institution['@attributes']['entityID']) && isset($institution['Organization'])) {
+        $entity_id = $institution['@attributes']['entityID'];
+        $organization_name = $institution['Organization']['OrganizationDisplayName'];
+        $organization_url = $institution['Organization']['OrganizationURL'];
+
+        $institution_list[$entity_id] = $organization_name;
+      }
+    }
+
+    asort($institution_list);
+
+    // Get default (remembered) IdP.
+    $default_institution = isset($_COOKIE['Drupal_visitor_shib_auth_form_default_institution']) ? $_COOKIE['Drupal_visitor_shib_auth_form_default_institution'] : FALSE;
+
+    // Select field with institution list.
+    $form['institution'] = array(
+      '#type' => 'select',
+      '#title' => t('Select a institution'),
+      '#options' => $institution_list,
+      '#default_value' => $default_institution,
+    );
+
+    // If Select2 is enabled, use it.
+    if (module_exists('select2')) {
+      $form['institution']['#select2'] = array(
+        'placeholder' => t('Select a institution'),
+        'allowClear' => TRUE,
+      );
+    }
+
+    // 'Remember' checkbox.
+    $form['remember'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Remember your choice'),
+      '#default_value' => ($default_institution ? TRUE : FALSE),
+    );
+
+    $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Submit'),
+    );
+
+    return $form;
+  }
+}
+
+
+function shib_auth_form_form_submit($form, &$form_state) {
+  $url = shib_auth_get_redirect_base(shib_auth_config('full_handler_url'));
+  $institution = $form_state['values']['institution'];
+  $target = url(NULL, array('absolute' => TRUE, 'query' => array('q' => 'shib_login/' . $_GET['q'])));;
+  $query = array(
+    'entityID' => $institution,
+    'target' => $target
+  );
+
+  // Build the url.
+  if ($institution) {
+    $auth_url = url($url, array('query' => $query));
+
+    // Remember choosen institution.
+    $remember = $form_state['values']['remember'];
+    if ($remember) {
+      user_cookie_save(array('shib_auth_form_default_institution' => $institution));
+    }
+    else {
+      if ($_COOKIE['Drupal_visitor_shib_auth_form_default_institution']) {
+        user_cookie_delete('shib_auth_form_default_institution');
+      }
+    }
+
+    cache_clear_all(NULL, 'cache_page', '*');
+    drupal_goto($auth_url);
+  }
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function shib_auth_form_block_info() {
+  $blocks['shib_auth_form'] = array(
+    'info' => t('Shibboleth login form'),
+    'cache' => DRUPAL_CACHE_PER_PAGE
+  );
+
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function shib_auth_form_block_view($delta = '') {
+  global $user;
+
+  $block = array();
+
+  switch ($delta) {
+    case 'shib_auth_form':
+      if (!$user->uid || !_shib_auth_form_metadata_check()) {
+        $block['subject'] = t('Shibboleth login form');
+        $block['content'] = drupal_get_form('shib_auth_form_form');
+      }
+
+      break;
+
+  }
+  return $block;
+}
+
+/**
+ * Return an array of institutions from metadata URL.
+ */
+function _shib_auth_form_metadata_institutions($rescan = FALSE, $form_state = NULL) {
+  $institutions = variable_get('shib_auth_form_metadata_institutions');
+
+  if (!$institutions || $rescan) {
+    $shib_auth_form_metadata_url = variable_get('shib_auth_form_metadata_url');
+    $shib_auth_form_metadata = json_decode(json_encode((array) simplexml_load_file($shib_auth_form_metadata_url)), TRUE);
+
+    $institutions = $shib_auth_form_metadata['EntityDescriptor'];
+
+    if ($form_state) {
+      $elements = $form_state['values']['shib_auth_form_metadata_elements'];
+
+      if ($elements != 'all') {
+        foreach ($institutions as $key => $institution) {
+          if (isset($institution[$elements])) {
+            $filtered_institutions[] = $institution;
+          }
+        }
+
+        $institutions = $filtered_institutions;
+      }
+    }
+
+    variable_set('shib_auth_form_metadata_institutions', $institutions);
+
+    if ($rescan) {
+      return;
+    }
+
+    return $metadata_institutions;
+  }
+
+  return $institutions;
+}
+
+/**
+ * Check if XML metadata URL is defined.
+ */
+function _shib_auth_form_metadata_check() {
+  $shib_auth_form_metadata_url = variable_get('shib_auth_form_metadata_url');
+
+  if (!isset($shib_auth_form_metadata_url) || empty($shib_auth_form_metadata_url)) {
+    drupal_set_message(t('You must define a valid "Metadata URL" to use WAYF form.'), 'warning', FALSE);
+
+    return FALSE;
+  }
+
+  return TRUE;
+}
