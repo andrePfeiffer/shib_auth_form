@@ -4,6 +4,10 @@ namespace Drupal\shib_auth_form\Form;
 
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
+use http\Env\Response;
+use Drupal\Core\Url;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+
 
 /**
  * Class DefaultForm.
@@ -35,9 +39,7 @@ class DefaultForm extends FormBase {
       }
     }
     asort($institution_list);
-    $default_institution = isset($_COOKIE['Drupal_visitor_shib_auth_form_default_institution']) ? $_COOKIE['Drupal_visitor_shib_auth_form_default_institution'] : FALSE;
-
-    $default_institution = FALSE;
+    $default_institution = !empty(\Drupal::state()->get('shib_auth_form_metadata_default_institution')) ? \Drupal::state()->get('shib_auth_form_metadata_default_institution') : FALSE;
 
 
     $form['institution'] = [
@@ -70,7 +72,78 @@ class DefaultForm extends FormBase {
    * {@inheritdoc}
    */
   public function submitForm(array &$form, FormStateInterface $form_state) {
-    arrray('ola');
+    $institution = $form_state->getValue('institution');
+
+    $remember = $form_state->getValue('remember');
+    if ($remember) {
+      \Drupal::state()->set('shib_auth_form_metadata_default_institution', $institution);
+    }
+    else {
+      \Drupal::state()->set('shib_auth_form_metadata_default_institution', null);
+    }
+
+    return new RedirectResponse($this->createLink($institution)->toString());
+
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  private function createLink(string $institution){
+    $config = \Drupal::config('shib_auth.shibbolethsettings');
+    $url = $config->get('shibboleth_login_handler_url');
+    $force_https = $config->get('force_https_on_login');
+
+    $config = \Drupal::config('shib_auth.advancedsettings');
+    $redirect = $config->get('url_redirect_login');
+
+    if ($redirect) {
+      $redirect = Url::fromUserInput($redirect)->toString();
+    }
+    else {
+      // Not set, use current page.
+      $redirect = Url::fromRoute('<current>')->toString();
+    }
+    if ($force_https) {
+      $redirect = preg_replace('~^http://~', 'https://', $redirect);
+    }
+
+    $options = [
+      'absolute' => TRUE,
+      'query' => [
+        'destination' => $redirect,
+      ],
+    ];
+
+    if ($force_https) {
+      $options['https'] = TRUE;
+    }
+
+    // This is the callback to process the Shib login with the destination for
+    // the redirect when done.
+    $shib_login_url = Url::fromRoute('shib_auth.login_controller_login', [], $options)->toString();
+
+    $options = [
+      'query' => [
+        'target' => $shib_login_url,
+        'entityID' => $institution,
+      ],
+    ];
+
+    if ($force_https) {
+      $options['https'] = TRUE;
+      if (empty($_SERVER['HTTPS'])) {
+        $options['absolute'] = TRUE;
+      }
+    }
+
+    if (parse_url($url, PHP_URL_HOST)) {
+      $url = Url::fromUri($url, $options);
+    }
+    else {
+      $url = Url::fromUserInput($url, $options);
+    }
+    return $url;
   }
 
 }
