@@ -1,0 +1,4 @@
+shib_auth_form.metadata:
+  title: 'Metadata settings'
+  route_name: shib_auth_form.metadata_settings
+  base_route: shib_auth.shibboleth_settings
