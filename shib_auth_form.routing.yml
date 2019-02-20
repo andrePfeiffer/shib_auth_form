@@ -8,10 +8,10 @@ shib_auth_form.metadata_settings:
   options:
     _admin_route: TRUE
 shib_auth_form.default_form:
-  path: '/shib_auth_form/form/default'
+  path: '/shib_auth_form/form/shibauth'
   defaults:
-    _form: '\Drupal\shib_auth_form\Form\DefaultForm'
-    _title: 'DefaultForm'
+    _form: '\Drupal\shib_auth_form\Form\ShibAuthForm'
+    _title: 'ShibAuthForm'
   requirements:
     _access: 'TRUE'
   

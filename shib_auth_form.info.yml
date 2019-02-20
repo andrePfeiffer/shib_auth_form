@@ -5,8 +5,3 @@ core: 8.x
 package: Shibboleth
 dependencies:
   - Shibboleth:shib_auth
-
-#  files[] = shib_auth_form_admin.inc
-#  configure = admin/config/people/shib_auth/metadata
-
-

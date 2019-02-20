@@ -4,7 +4,6 @@ namespace Drupal\shib_auth_form\Form;
 
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
-use http\Env\Response;
 use Drupal\Core\Url;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 
@@ -12,20 +11,21 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 /**
  * Class DefaultForm.
  */
-class DefaultForm extends FormBase {
+class ShibAuthForm extends FormBase {
 
 
   /**
    * {@inheritdoc}
    */
   public function getFormId() {
-    return 'default_form';
+    return 'shib_auth_form_form';
   }
 
   /**
    * {@inheritdoc}
    */
   public function buildForm(array $form, FormStateInterface $form_state) {
+    $form['#theme'] = 'shib_auth_form_form';
 
     $institution_list = array();
     $institutions = \Drupal::state()->get('shib_auth_form_metadata_institutions');;
@@ -33,8 +33,6 @@ class DefaultForm extends FormBase {
       if (isset($institution['@attributes']['entityID']) && isset($institution['Organization'])) {
         $entity_id = $institution['@attributes']['entityID'];
         $organization_name = $institution['Organization']['OrganizationDisplayName'];
-        $organization_url = $institution['Organization']['OrganizationURL'];
-
         $institution_list[$entity_id] = $organization_name;
       }
     }
@@ -81,9 +79,9 @@ class DefaultForm extends FormBase {
     else {
       \Drupal::state()->set('shib_auth_form_metadata_default_institution', null);
     }
-
-    return new RedirectResponse($this->createLink($institution)->toString());
-
+    $response = new RedirectResponse($this->createLink($institution));
+    $response->send();
+    return;
   }
 
   /**
@@ -136,14 +134,14 @@ class DefaultForm extends FormBase {
         $options['absolute'] = TRUE;
       }
     }
-
-    if (parse_url($url, PHP_URL_HOST)) {
+    $options['absolute'] = TRUE;
+      if (parse_url($url, PHP_URL_HOST)) {
       $url = Url::fromUri($url, $options);
     }
     else {
       $url = Url::fromUserInput($url, $options);
     }
-    return $url;
+    return $url->toString();
   }
 
 }
